@@ -2,6 +2,8 @@
 var express    = require('express');        // call express
 var app        = express();                 // define our app using express
 var bodyParser = require('body-parser');
+var session    = require('express-session');
+var MongoStore = require('connect-mongo')(session);
 
 
 
@@ -18,10 +20,20 @@ var mongoose   = require('mongoose');
 mongoose.connect('mongodb://localhost:27017/4201'); // connect to our database
 
 var Bear       = require('./app/models/bear');
+var User       = require('./app/models/user');
 
 // ROUTES FOR OUR API
 // =============================================================================
 var router = express.Router();              // get an instance of the express Router
+
+app.use(session({
+    secret: 'work hard',
+    resave: true,
+    saveUninitialized: false,
+    store: new MongoStore({
+        mongooseConnection: mongoose.connection
+    })
+}));
 
 
 router.use(function(req, res, next) {
@@ -49,6 +61,45 @@ router.get('/', function(req, res) {
     res.json({ message: 'hooray! welcome to our api!' });   
 });
 
+router.route('/user')
+
+    .post(function(req, res) {
+
+        if (req.body.email &&
+            req.body.username &&
+            req.body.password &&
+            req.body.passwordConf) {
+            var userData = {
+              email: req.body.email,
+              username: req.body.username,
+              password: req.body.password,
+              passwordConf: req.body.passwordConf,
+            }
+            //use schema.create to insert data into the db
+            User.create(userData, function (err, user) {
+              if (err) {
+                res.json(err.message);
+              } else {
+                res.json({ message: 'User created!' });
+              }
+            });
+          }
+
+    });
+
+router.route('/login')
+
+    .post(function(req, res) {
+        User.authenticate(req.body.email, req.body.password, function(err, user) {
+            if(!user) {
+                res.json('Error')
+            } else {
+                req.session.userId = user._id;
+                res.json('User loged in');
+            }
+        });
+    });
+
 router.route('/bears')
 
     .post(function(req, res) {
@@ -71,6 +122,36 @@ router.route('/bears')
 
             res.json(bears);
         });
+    });
+
+router.route('/bears/:bear_id')
+
+    .get(function(req, res) {
+        Bear.findById(req.params.bear_id, function(err, bear) {
+            if (err)
+                res.send(err);
+            res.json(bear);
+        });
+    })
+    .put(function(req, res) {
+
+        // use our bear model to find the bear we want
+        Bear.findById(req.params.bear_id, function(err, bear) {
+
+            if (err)
+                res.send(err);
+
+            bear.name = req.body.name;  // update the bears info
+
+            // save the bear
+            bear.save(function(err) {
+                if (err)
+                    res.send(err);
+
+                res.json({ message: 'Bear updated!' });
+            });
+
+        });
     })
     .delete(function(req, res) {
         Bear.remove({
@@ -82,6 +163,7 @@ router.route('/bears')
             res.json({ message: 'Successfully deleted' });
         });
     });
+
 
 // test route to make sure everything is working (accessed at GET http://localhost:4201/api)
 
